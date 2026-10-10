@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.155.0/http/server.ts"; // 或更新到最新稳定版，如 @0.224.0
 
 async function handler(req: Request): Promise<Response> {
   const incomingUrl = new URL(req.url);
@@ -6,75 +5,56 @@ async function handler(req: Request): Promise<Response> {
     return new Response(
       "此地址只用于为astrbot提供更快速的github访问服务",
       {
-        status: 200, // OK
+        status: 200,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       }
     );
   }
-  // 1. 从请求路径中提取目标 URL
-  //    - incomingUrl.pathname 会是像 "/https://github.com/..." 这样的形式
-  //    - slice(1) 去掉开头的 "/"
-  //    - decodeURIComponent 处理路径中可能存在的 URL 编码 (例如 %2F)
   const targetUrlString = decodeURIComponent(incomingUrl.pathname.slice(1));
-
-  // 2. 验证提取出的字符串是否看起来像一个有效的 URL
   if (!targetUrlString || (!targetUrlString.startsWith("http://") && !targetUrlString.startsWith("https://"))) {
-    // 如果路径为空或者不是以 http/https 开头，则返回错误
     return new Response("Invalid or missing target URL in path. Usage: /<target_url>", {
-      status: 400, // Bad Request
+      status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
+  // 白名单：只允许github域名，防止被滥用
+  const allowHosts = ["github.com", "raw.githubusercontent.com"];
+  const targetUrl = new URL(targetUrlString);
+  if (!allowHosts.includes(targetUrl.host)) {
+    return new Response("Only github proxy allowed", { status:403 });
+  }
 
-  console.log(`Proxying request to: ${targetUrlString}`); // 打印日志，方便调试
-
+  console.log(`Proxying request to: ${targetUrlString}`);
   try {
-    // 3. 使用提取出的目标 URL 发起 fetch 请求
-    //    并将原始请求的方法、头信息、请求体都转发过去
     const response = await fetch(targetUrlString, {
-      headers: req.headers, // 转发原始请求头
-      method: req.method,   // 转发原始请求方法
-      body: req.body,     // 转发原始请求体 (支持流式传输)
-      redirect: 'manual', // 重要：不自动处理重定向，将 3xx 响应返回给客户端处理
-                           // 或者设为 'follow' 让代理服务器处理重定向
+      headers: req.headers,
+      method: req.method,
+      body: req.body,
+      redirect: 'manual',
     });
-
-    // 4. 返回从目标服务器获取的响应
-    //    为了允许跨域请求 (例如浏览器 JS 调用此代理)，添加 CORS 头
-    const responseHeaders = new Headers(response.headers); // 复制响应头以便修改
-    responseHeaders.set("Access-Control-Allow-Origin", "*"); // 允许任何来源访问
-    responseHeaders.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"); // 允许的方法
-    responseHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization, *"); // 允许的请求头
-    // 可以根据需要更精细地控制 CORS 头
-
-    // 处理浏览器的 OPTIONS 预检请求
-     if (req.method === "OPTIONS") {
-        return new Response(null, {
-            status: 204, // No Content
-            headers: responseHeaders
-        });
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    responseHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization, *");
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: responseHeaders
+      });
     }
-
-    // 直接返回目标服务器的响应体、状态码和处理过的头信息
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
     });
-
   } catch (error) {
-    // 5. 处理 fetch 过程中可能发生的错误 (例如网络问题、目标服务器无法访问)
     console.error(`Error fetching ${targetUrlString}:`, error);
     return new Response(`Failed to proxy request to ${targetUrlString}: ${error.message}`, {
-      status: 502, // Bad Gateway
+      status: 502,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 }
-
-console.log("此地址只用于帮助astrbot更快的连接github"); // Deno Deploy 会自动使用 $PORT
-// 监听端口 8000 (本地) 或 Deno Deploy 指定的端口
-serve(handler, {
-  hostname: "0.0.0.0",
-  port: parseInt(Deno.env.get("DENO_PORT") || "8000")
-});
+console.log("此地址只用于帮助astrbot更快的连接github");
+// Deno.serve 默认监听0.0.0.0，Deno Deploy自动分配端口，无需手动指定
+Deno.serve(handler);
