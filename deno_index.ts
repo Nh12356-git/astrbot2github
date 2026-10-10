@@ -1,4 +1,3 @@
-
 async function handler(req: Request): Promise<Response> {
   const incomingUrl = new URL(req.url);
   if (incomingUrl.pathname === "/") {
