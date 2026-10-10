@@ -9,7 +9,8 @@ async function handler(req: Request): Promise<Response> {
       }
     );
   }
-  const targetUrlString = decodeURIComponent(incomingUrl.pathname.slice(1));
+  // 移除 decodeURIComponent
+  const targetUrlString = incomingUrl.pathname.slice(1);
   if (!targetUrlString || (!targetUrlString.startsWith("http://") && !targetUrlString.startsWith("https://"))) {
     return new Response("Invalid or missing target URL in path. Usage: /<target_url>", {
       status: 400,
@@ -55,5 +56,4 @@ async function handler(req: Request): Promise<Response> {
   }
 }
 console.log("此地址只用于帮助astrbot更快的连接github");
-// Deno.serve 默认监听0.0.0.0，Deno Deploy自动分配端口，无需手动指定
 Deno.serve(handler);
